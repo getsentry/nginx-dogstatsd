@@ -604,6 +604,8 @@ ngx_http_dogstatsd_set_server(ngx_conf_t *cf, ngx_command_t *cmd, void *conf)
     ngx_http_dogstatsd_conf_t      *ulcf = conf;
     ngx_str_t                   *value;
     ngx_url_t                    u;
+    u_char                      *env_value;
+    size_t                      env_len;
 
     value = cf->args->elts;
 
@@ -612,6 +614,22 @@ ngx_http_dogstatsd_set_server(ngx_conf_t *cf, ngx_command_t *cmd, void *conf)
         return NGX_CONF_OK;
     }
     ulcf->off = 0;
+
+    /* Check if the value starts with $ and is an environment variable */
+    if (value[1].len > 1 && value[1].data[0] == '$') {
+        env_value = ngx_getenv(value[1].data + 1, value[1].len - 1);
+        if (env_value == NULL) {
+            ngx_conf_log_error(NGX_LOG_EMERG, cf, 0, "environment variable \"%V\" not found", &value[1]);
+            return NGX_CONF_ERROR;
+        }
+        env_len = ngx_strlen(env_value);
+        if (env_len == 0) {
+            ngx_conf_log_error(NGX_LOG_EMERG, cf, 0, "environment variable \"%V\" is empty", &value[1]);
+            return NGX_CONF_ERROR;
+        }
+        value[1].data = env_value;
+        value[1].len = env_len;
+    }
 
     ngx_memzero(&u, sizeof(ngx_url_t));
 
@@ -624,7 +642,7 @@ ngx_http_dogstatsd_set_server(ngx_conf_t *cf, ngx_command_t *cmd, void *conf)
         return NGX_CONF_ERROR;
     }
 
-	ulcf->endpoint = ngx_http_dogstatsd_add_endpoint(cf, &u.addrs[0]);
+    ulcf->endpoint = ngx_http_dogstatsd_add_endpoint(cf, &u.addrs[0]);
     if(ulcf->endpoint == NULL) {
         return NGX_CONF_ERROR;
     }
