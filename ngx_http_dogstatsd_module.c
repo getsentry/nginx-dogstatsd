@@ -15,6 +15,7 @@
 #include <ngx_core.h>
 #include <ngx_http.h>
 #include <nginx.h>
+#include <stdlib.h>  /* for getenv() */
 
 #define STATSD_DEFAULT_PORT 			8125
 
@@ -22,7 +23,7 @@
 #define STATSD_TYPE_TIMING  0x0002
 
 /*
- * Max StartsD message length = 1472
+ * Max StatsD message length = 1472
  * - 1 ASCII character = 1 byte
  * - 1 UDP packet payload = 1472 bytes ( 1500-20-8 )
 */
@@ -598,6 +599,50 @@ ngx_http_dogstatsd_add_endpoint(ngx_conf_t *cf, ngx_dogstatsd_addr_t *peer_addr)
     return endpoint;
 }
 
+static ngx_str_t *
+ngx_http_dogstatsd_get_env_value(ngx_conf_t *cf, ngx_str_t *value)
+{
+    char        *env_value;
+    size_t      env_len;
+    u_char      *p;
+    char        *env_name;
+
+    if (!(value->len > 1 && value->data[0] == '$')) {
+        return value;
+    }
+
+    /* Create a null-terminated string for getenv() */
+    env_name = ngx_palloc(cf->pool, value->len);
+    if (env_name == NULL) {
+        return NULL;
+    }
+    ngx_memcpy(env_name, value->data + 1, value->len - 1);
+    env_name[value->len - 1] = '\0';
+
+    env_value = getenv(env_name);
+    if (env_value == NULL) {
+        ngx_conf_log_error(NGX_LOG_EMERG, cf, 0, "environment variable \"%V\" not found", value);
+        return NULL;
+    }
+    env_len = strlen(env_value);
+    if (env_len == 0) {
+        ngx_conf_log_error(NGX_LOG_EMERG, cf, 0, "environment variable \"%V\" is empty", value);
+        return NULL;
+    }
+
+    /* Allocate memory and copy the environment variable value including null terminator */
+    p = ngx_palloc(cf->pool, env_len + 1);
+    if (p == NULL) {
+        return NULL;
+    }
+    ngx_memcpy(p, env_value, env_len);
+    p[env_len] = '\0';
+    value->data = p;
+    value->len = env_len;
+
+    return value;
+}
+
 static char *
 ngx_http_dogstatsd_set_server(ngx_conf_t *cf, ngx_command_t *cmd, void *conf)
 {
@@ -613,6 +658,11 @@ ngx_http_dogstatsd_set_server(ngx_conf_t *cf, ngx_command_t *cmd, void *conf)
     }
     ulcf->off = 0;
 
+    /* Handle environment variable if present */
+    if (ngx_http_dogstatsd_get_env_value(cf, &value[1]) == NULL) {
+        return NGX_CONF_ERROR;
+    }
+
     ngx_memzero(&u, sizeof(ngx_url_t));
 
     u.url = value[1];
@@ -624,7 +674,7 @@ ngx_http_dogstatsd_set_server(ngx_conf_t *cf, ngx_command_t *cmd, void *conf)
         return NGX_CONF_ERROR;
     }
 
-	ulcf->endpoint = ngx_http_dogstatsd_add_endpoint(cf, &u.addrs[0]);
+    ulcf->endpoint = ngx_http_dogstatsd_add_endpoint(cf, &u.addrs[0]);
     if(ulcf->endpoint == NULL) {
         return NGX_CONF_ERROR;
     }
