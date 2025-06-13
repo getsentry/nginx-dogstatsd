@@ -599,15 +599,56 @@ ngx_http_dogstatsd_add_endpoint(ngx_conf_t *cf, ngx_dogstatsd_addr_t *peer_addr)
     return endpoint;
 }
 
+static ngx_str_t *
+ngx_http_dogstatsd_get_env_value(ngx_conf_t *cf, ngx_str_t *value)
+{
+    char        *env_value;
+    size_t      env_len;
+    u_char      *p;
+    char        *env_name;
+
+    if (!(value->len > 1 && value->data[0] == '$')) {
+        return value;
+    }
+
+    /* Create a null-terminated string for getenv() */
+    env_name = ngx_palloc(cf->pool, value->len);
+    if (env_name == NULL) {
+        return NULL;
+    }
+    ngx_memcpy(env_name, value->data + 1, value->len - 1);
+    env_name[value->len - 1] = '\0';
+
+    env_value = getenv(env_name);
+    if (env_value == NULL) {
+        ngx_conf_log_error(NGX_LOG_EMERG, cf, 0, "environment variable \"%V\" not found", value);
+        return NULL;
+    }
+    env_len = strlen(env_value);
+    if (env_len == 0) {
+        ngx_conf_log_error(NGX_LOG_EMERG, cf, 0, "environment variable \"%V\" is empty", value);
+        return NULL;
+    }
+
+    /* Allocate memory and copy the environment variable value including null terminator */
+    p = ngx_palloc(cf->pool, env_len + 1);
+    if (p == NULL) {
+        return NULL;
+    }
+    ngx_memcpy(p, env_value, env_len);
+    p[env_len] = '\0';
+    value->data = p;
+    value->len = env_len;
+
+    return value;
+}
+
 static char *
 ngx_http_dogstatsd_set_server(ngx_conf_t *cf, ngx_command_t *cmd, void *conf)
 {
     ngx_http_dogstatsd_conf_t      *ulcf = conf;
     ngx_str_t                   *value;
     ngx_url_t                    u;
-    char                        *env_value;
-    size_t                      env_len;
-    u_char                      *p;
 
     value = cf->args->elts;
 
@@ -617,36 +658,9 @@ ngx_http_dogstatsd_set_server(ngx_conf_t *cf, ngx_command_t *cmd, void *conf)
     }
     ulcf->off = 0;
 
-    /* Check if the value starts with $ and is an environment variable */
-    if (value[1].len > 1 && value[1].data[0] == '$') {
-        /* Create a null-terminated string for getenv() */
-        char *env_name = ngx_palloc(cf->pool, value[1].len);
-        if (env_name == NULL) {
-            return NGX_CONF_ERROR;
-        }
-        ngx_memcpy(env_name, value[1].data + 1, value[1].len - 1);
-        env_name[value[1].len - 1] = '\0';
-
-        env_value = getenv(env_name);
-        if (env_value == NULL) {
-            ngx_conf_log_error(NGX_LOG_EMERG, cf, 0, "environment variable \"%V\" not found", &value[1]);
-            return NGX_CONF_ERROR;
-        }
-        env_len = strlen(env_value);
-        if (env_len == 0) {
-            ngx_conf_log_error(NGX_LOG_EMERG, cf, 0, "environment variable \"%V\" is empty", &value[1]);
-            return NGX_CONF_ERROR;
-        }
-
-        /* Allocate memory and copy the environment variable value including null terminator */
-        p = ngx_palloc(cf->pool, env_len + 1);
-        if (p == NULL) {
-            return NGX_CONF_ERROR;
-        }
-        ngx_memcpy(p, env_value, env_len);
-        p[env_len] = '\0';
-        value[1].data = p;
-        value[1].len = env_len;
+    /* Handle environment variable if present */
+    if (ngx_http_dogstatsd_get_env_value(cf, &value[1]) == NULL) {
+        return NGX_CONF_ERROR;
     }
 
     ngx_memzero(&u, sizeof(ngx_url_t));
