@@ -607,6 +607,7 @@ ngx_http_dogstatsd_set_server(ngx_conf_t *cf, ngx_command_t *cmd, void *conf)
     ngx_url_t                    u;
     char                        *env_value;
     size_t                      env_len;
+    u_char                      *p;
 
     value = cf->args->elts;
 
@@ -631,12 +632,20 @@ ngx_http_dogstatsd_set_server(ngx_conf_t *cf, ngx_command_t *cmd, void *conf)
             ngx_conf_log_error(NGX_LOG_EMERG, cf, 0, "environment variable \"%V\" not found", &value[1]);
             return NGX_CONF_ERROR;
         }
-        env_len = ngx_strlen(env_value);
+        env_len = strlen(env_value);
         if (env_len == 0) {
             ngx_conf_log_error(NGX_LOG_EMERG, cf, 0, "environment variable \"%V\" is empty", &value[1]);
             return NGX_CONF_ERROR;
         }
-        value[1].data = (u_char *)env_value;
+
+        /* Allocate memory and copy the environment variable value including null terminator */
+        p = ngx_palloc(cf->pool, env_len + 1);
+        if (p == NULL) {
+            return NGX_CONF_ERROR;
+        }
+        ngx_memcpy(p, env_value, env_len);
+        p[env_len] = '\0';
+        value[1].data = p;
         value[1].len = env_len;
     }
 
