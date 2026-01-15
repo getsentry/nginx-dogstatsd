@@ -1,4 +1,4 @@
-This repo contains docker images and require scripting for generating dynamic shared modules against a debian package. For example to build a shared object that can be used on the latest nginx available in debian buster:
+This repo contains docker images and require scripting for generating dynamic shared modules against a debian package. For example to build a shared object that can be used on the latest nginx available in debian bookworm:
 
-docker build -f ./Dockerfile-buster -t nginx-dogstatsd-builder:buster .
-docker run -v $(pwd):/opt/nginx-dogstatsd nginx-dogstatsd-builder:buster
+docker build --load -f ./Dockerfile-buster -t nginx-dogstatsd-builder:bookworm .
+docker run -v $(pwd):/opt/nginx-dogstatsd nginx-dogstatsd-builder:bookworm
