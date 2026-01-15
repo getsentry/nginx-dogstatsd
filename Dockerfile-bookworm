@@ -1,0 +1,11 @@
+FROM debian:bookworm
+
+RUN set -ex \
+  && sed -i 's/^Types: deb$/Types: deb deb-src/' /etc/apt/sources.list.d/debian.sources \
+  && apt-get update \
+  && apt-get install -y build-essential dpkg-dev \
+  && apt-get build-dep -y nginx-light
+
+ADD . /opt/nginx-dogstatsd
+
+CMD ["/opt/nginx-dogstatsd/debian-build.sh"]
