@@ -68,6 +68,7 @@ typedef struct {
     int	                    off;
     ngx_udp_endpoint_t      *endpoint;
 	ngx_uint_t				sample_rate;
+	ngx_flag_t				use_native_distribution;
 	ngx_array_t				*stats;
 } ngx_http_dogstatsd_conf_t;
 
@@ -110,6 +111,13 @@ static ngx_command_t  ngx_http_dogstatsd_commands[] = {
 	  ngx_conf_set_num_slot,
 	  NGX_HTTP_LOC_CONF_OFFSET,
 	  offsetof(ngx_http_dogstatsd_conf_t, sample_rate),
+	  NULL },
+
+	{ ngx_string("dogstatsd_use_native_distribution"),
+	  NGX_HTTP_MAIN_CONF|NGX_HTTP_SRV_CONF|NGX_HTTP_LOC_CONF|NGX_CONF_FLAG,
+	  ngx_conf_set_flag_slot,
+	  NGX_HTTP_LOC_CONF_OFFSET,
+	  offsetof(ngx_http_dogstatsd_conf_t, use_native_distribution),
 	  NULL },
 
 	{ ngx_string("dogstatsd_count"),
@@ -292,7 +300,7 @@ ngx_http_dogstatsd_handler(ngx_http_request_t *r)
 		if (stat.type == STATSD_TYPE_COUNTER) {
 			metric_type = "c";
 		} else if (stat.type == STATSD_TYPE_TIMING) {
-			metric_type = "ms";
+			metric_type = ulcf->use_native_distribution ? "d" : "ms";
 		} else {
 			metric_type = NULL;
 		}
@@ -522,8 +530,9 @@ ngx_http_dogstatsd_create_loc_conf(ngx_conf_t *cf)
         return NGX_CONF_ERROR;
     }
 	conf->endpoint = NGX_CONF_UNSET_PTR;
-    conf->off = NGX_CONF_UNSET;
+	conf->off = NGX_CONF_UNSET;
 	conf->sample_rate = NGX_CONF_UNSET_UINT;
+	conf->use_native_distribution = NGX_CONF_UNSET;
 	conf->stats = NULL;
 
     return conf;
@@ -543,6 +552,7 @@ ngx_http_dogstatsd_merge_loc_conf(ngx_conf_t *cf, void *parent, void *child)
 	ngx_conf_merge_ptr_value(conf->endpoint, prev->endpoint, NULL);
 	ngx_conf_merge_off_value(conf->off, prev->off, 1);
 	ngx_conf_merge_uint_value(conf->sample_rate, prev->sample_rate, 100);
+	ngx_conf_merge_off_value(conf->use_native_distribution, prev->use_native_distribution, 0);
 
 	if (conf->stats == NULL) {
 		sz = (prev->stats != NULL ? prev->stats->nelts : 2);
