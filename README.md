@@ -14,6 +14,9 @@ This is how to use the nginx-dogstatsd module:
 		# Defaults to sending all dogstatsd (100%).
 		dogstatsd_sample_rate 10; # 10% of requests
 
+		# Use DogStatsD native distributions instead of StatsD timers for timing metrics.
+		# Defaults to off.
+		dogstatsd_use_native_distribution on;
 
 		server {
 			listen 80;
